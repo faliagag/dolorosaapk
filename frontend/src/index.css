@@ -1,0 +1,244 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700;800;900&family=Manrope:wght@300;400;500;600;700;800&display=swap");
+
+:root {
+    --ld-bg: #050505;
+    --ld-primary: #39ff14;
+    --ld-violet: #bf40ff;
+    --ld-danger: #ff3366;
+}
+
+html,
+body,
+#root {
+    background-color: var(--ld-bg);
+    color: #fff;
+    min-height: 100vh;
+    /* PWA: Allow full viewport on iPhones with notch */
+    min-height: -webkit-fill-available;
+    /* Prevent overscroll bounce from showing white */
+    overscroll-behavior-y: none;
+}
+
+body {
+    margin: 0;
+    font-family:
+        "Manrope",
+        -apple-system,
+        BlinkMacSystemFont,
+        sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.005em;
+    /* Prevent text size adjust on iOS rotation */
+    -webkit-text-size-adjust: 100%;
+    /* Disable tap-highlight color on mobile */
+    -webkit-tap-highlight-color: transparent;
+    /* Respect iPhone safe areas (notch, home indicator) */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+
+/* Disable text selection on interactive app UI (allow on content) */
+button,
+.label-small,
+nav {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Bottom nav respects iPhone home indicator */
+nav.fixed.bottom-0 {
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+.font-display {
+    font-family: "Unbounded", sans-serif;
+    letter-spacing: -0.025em;
+}
+
+/* Neon grid background */
+.bg-neon-grid {
+    background-image:
+        radial-gradient(
+            circle at 20% 0%,
+            rgba(57, 255, 20, 0.08) 0%,
+            transparent 40%
+        ),
+        radial-gradient(
+            circle at 80% 90%,
+            rgba(191, 64, 255, 0.1) 0%,
+            transparent 50%
+        ),
+        linear-gradient(
+            180deg,
+            rgba(5, 5, 5, 1) 0%,
+            rgba(10, 10, 10, 1) 100%
+        );
+}
+
+.glass {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-heavy {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.neon-text {
+    color: #39ff14;
+    text-shadow: 0 0 12px rgba(57, 255, 20, 0.5);
+}
+
+.neon-border {
+    border: 1px solid rgba(57, 255, 20, 0.6);
+    box-shadow:
+        0 0 18px rgba(57, 255, 20, 0.25),
+        inset 0 0 12px rgba(57, 255, 20, 0.06);
+}
+
+.violet-glow {
+    box-shadow: 0 0 25px rgba(191, 64, 255, 0.5);
+}
+
+.btn-primary {
+    background: #39ff14;
+    color: #000;
+    font-weight: 800;
+    border-radius: 1rem;
+    height: 3.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+    font-family: "Unbounded", sans-serif;
+    letter-spacing: -0.015em;
+    font-size: 1.05rem;
+}
+.btn-primary:hover {
+    background: #32e612;
+    box-shadow: 0 0 25px rgba(57, 255, 20, 0.55);
+    transform: translateY(-1px);
+}
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-weight: 700;
+    border-radius: 1rem;
+    height: 3.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+    backdrop-filter: blur(12px);
+    font-size: 1rem;
+}
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-violet {
+    background: #bf40ff;
+    color: #fff;
+    font-weight: 800;
+    border-radius: 1rem;
+    height: 3.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+    font-family: "Unbounded", sans-serif;
+    font-size: 1rem;
+}
+.btn-violet:hover {
+    background: #a030e0;
+    box-shadow: 0 0 25px rgba(191, 64, 255, 0.6);
+}
+
+.input-field {
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1rem;
+    height: 3.5rem;
+    padding: 0 1rem;
+    color: #fff;
+    font-size: 1.05rem;
+    width: 100%;
+    transition: all 0.15s ease;
+    font-family: "Manrope", sans-serif;
+}
+.input-field::placeholder {
+    color: rgba(161, 161, 170, 0.6);
+}
+.input-field:focus {
+    outline: none;
+    border-color: #39ff14;
+    box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.15);
+}
+
+.label-small {
+    font-size: 0.7rem;
+    color: rgba(161, 161, 170, 0.9);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.card-glass {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 1.5rem;
+    padding: 1.5rem;
+}
+
+.pulse-neon {
+    animation: pulse-neon 2.4s ease-in-out infinite;
+}
+@keyframes pulse-neon {
+    0%,
+    100% {
+        box-shadow: 0 0 8px rgba(57, 255, 20, 0.35);
+    }
+    50% {
+        box-shadow: 0 0 24px rgba(57, 255, 20, 0.7);
+    }
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* selection */
+::selection {
+    background: #39ff14;
+    color: #000;
+}
