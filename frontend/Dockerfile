@@ -3,6 +3,11 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile
 COPY . .
+
+# Recibe la URL del backend desde CapRover en tiempo de build
+ARG REACT_APP_BACKEND_URL
+ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
+
 RUN yarn build
 
 FROM nginx:alpine
