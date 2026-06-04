@@ -27,7 +27,7 @@ db = client[os.environ['DB_NAME']]
 
 # Object storage
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 APP_NAME = "la-dolorosa"
 storage_key_cache = {"key": None}
 
@@ -794,8 +794,8 @@ async def ocr_scan(request: Request, file: UploadFile = File(...)):
     await require_user(request)
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
-    if not EMERGENT_KEY:
-        raise HTTPException(status_code=500, detail="LLM key not configured")
+if not GEMINI_API_KEY:
+    raise HTTPException(status_code=500, detail="Gemini key not configured")
 
     raw = await file.read()
     if len(raw) > 8 * 1024 * 1024:
@@ -826,11 +826,11 @@ async def ocr_scan(request: Request, file: UploadFile = File(...)):
         "- No agregues explicaciones. SOLO el JSON."
     )
 
-    chat = LlmChat(
-        api_key=EMERGENT_KEY,
-        session_id=f"ocr-{uuid.uuid4().hex[:8]}",
-        system_message=system,
-    ).with_model("openai", "gpt-4o")
+chat = LlmChat(
+    api_key=os.environ["GEMINI_API_KEY"],
+    session_id=f"ocr-{uuid.uuid4().hex[:8]}",
+    system_message=system,
+).with_model("google", "gemini-2.5-flash")
 
     msg = UserMessage(
         text=prompt,
