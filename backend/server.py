@@ -788,14 +788,14 @@ async def get_file(file_id: str):
     data, content_type = get_object(record["storage_path"])
     return FastAPIResponse(content=data, media_type=record.get("content_type") or content_type)
 
-# ---------- OCR with GPT-4o Vision ----------
+# ---------- OCR with Gemini Vision ----------
 @api_router.post("/ocr/scan")
 async def ocr_scan(request: Request, file: UploadFile = File(...)):
     await require_user(request)
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image files allowed")
-if not GEMINI_API_KEY:
-    raise HTTPException(status_code=500, detail="Gemini key not configured")
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="Gemini key not configured")
 
     raw = await file.read()
     if len(raw) > 8 * 1024 * 1024:
@@ -822,15 +822,15 @@ if not GEMINI_API_KEY:
         "- quantity es la cantidad que aparece al inicio de la línea (o 1 si no hay).\n"
         "- IGNORA: subtotal, total, propina, tip, IVA, neto, impuestos, cambio, vuelto, servicio, mesa, ID, fecha, "
         "garzón, RUT, folio, dirección, teléfono, logos, 'pre-cuenta', encabezados.\n"
-        "- Si no hay ítems claros, devuelve {\"items\": []}.\n"
+        '- Si no hay ítems claros, devuelve {"items": []}.\n'
         "- No agregues explicaciones. SOLO el JSON."
     )
 
-chat = LlmChat(
-    api_key=os.environ["GEMINI_API_KEY"],
-    session_id=f"ocr-{uuid.uuid4().hex[:8]}",
-    system_message=system,
-).with_model("google", "gemini-2.5-flash")
+    chat = LlmChat(
+        api_key=os.environ["GEMINI_API_KEY"],
+        session_id=f"ocr-{uuid.uuid4().hex[:8]}",
+        system_message=system,
+    ).with_model("google", "gemini-2.5-flash")
 
     msg = UserMessage(
         text=prompt,
