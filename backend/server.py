@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, Header, Query, Cookie
-from fastapi.responses import Response as FastAPIResponse
+from fastapi.responses import Response as FastAPIResponse, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+from requests_oauthlib import OAuth2Session
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -25,9 +26,20 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# Google OAuth config
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI', '')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://dolorosa.misdeseos.cl')
+
+GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
+
 # Object storage
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+EMERGENT_KEY = os.environ.get("EMERGENT_KEY", "")
 APP_NAME = "la-dolorosa"
 storage_key_cache = {"key": None}
 
@@ -85,15 +97,15 @@ class Item(BaseModel):
     name: str
     price: float
     quantity: int = 1
-    consumer_ids: List[str] = []  # participant IDs who consumed it
-    is_birthday_item: bool = False  # if True, gets split among non-birthday participants
+    consumer_ids: List[str] = []
+    is_birthday_item: bool = False
 
 class Payment(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     participant_id: str
     amount: float
     screenshot_path: Optional[str] = None
-    status: str = "pending"  # pending, validated, rejected
+    status: str = "pending"
     reported_at: str
     note: Optional[str] = ""
 
@@ -106,7 +118,7 @@ class Carrete(BaseModel):
     participants: List[Participant] = []
     items: List[Item] = []
     payments: List[Payment] = []
-    status: str = "active"  # active, closed
+    status: str = "active"
     created_at: str
 
 class CarreteCreate(BaseModel):
@@ -215,44 +227,88 @@ class LoginRequest(BaseModel):
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
-# ---------- Auth routes ----------
-@api_router.post("/auth/session")
-async def auth_session(request: Request, response: Response):
-    body = await request.json()
-    session_id = body.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id required")
-    try:
-        resp = requests.get(
-            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": session_id},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Session exchange failed: {e}")
+# ---------- Google OAuth routes ----------
+@api_router.get("/auth/google")
+async def auth_google_redirect():
+    """Inicia el flujo OAuth redirigiendo a Google"""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(status_code=500, detail="Google OAuth no configurado")
+    oauth = OAuth2Session(
+        GOOGLE_CLIENT_ID,
+        redirect_uri=GOOGLE_REDIRECT_URI,
+        scope=["openid", "email", "profile"],
+    )
+    authorization_url, state = oauth.authorization_url(
+        GOOGLE_AUTH_URL,
+        access_type="offline",
+        prompt="select_account",
+    )
+    response = RedirectResponse(url=authorization_url)
+    response.set_cookie("oauth_state", state, httponly=True, secure=True, samesite="none", max_age=600)
+    return response
 
-    email = data["email"]
+@api_router.get("/auth/google/callback")
+async def auth_google_callback(request: Request, response: Response):
+    """Callback de Google: intercambia code por token y crea sesion"""
+    code = request.query_params.get("code")
+    state = request.query_params.get("state")
+    saved_state = request.cookies.get("oauth_state", "")
+
+    if not code:
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_code")
+
+    # Intercambiar code por access_token
+    try:
+        import os as _os
+        _os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "0"
+        oauth = OAuth2Session(GOOGLE_CLIENT_ID, redirect_uri=GOOGLE_REDIRECT_URI, state=saved_state)
+        token = oauth.fetch_token(
+            GOOGLE_TOKEN_URL,
+            code=code,
+            client_secret=GOOGLE_CLIENT_SECRET,
+        )
+    except Exception as e:
+        logging.error(f"Google token exchange failed: {e}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=token_failed")
+
+    # Obtener info del usuario
+    try:
+        userinfo_resp = oauth.get(GOOGLE_USERINFO_URL)
+        userinfo_resp.raise_for_status()
+        userinfo = userinfo_resp.json()
+    except Exception as e:
+        logging.error(f"Google userinfo failed: {e}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=userinfo_failed")
+
+    email = userinfo.get("email", "").lower()
+    if not email:
+        return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
+
+    # Crear o actualizar usuario en DB
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
         user_id = existing["user_id"]
         await db.users.update_one(
             {"user_id": user_id},
-            {"$set": {"name": data.get("name", existing.get("name")), "picture": data.get("picture", existing.get("picture"))}},
+            {"$set": {
+                "name": userinfo.get("name", existing.get("name", "")),
+                "picture": userinfo.get("picture", existing.get("picture", "")),
+            }},
         )
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
         await db.users.insert_one({
             "user_id": user_id,
             "email": email,
-            "name": data.get("name", ""),
-            "picture": data.get("picture", ""),
+            "name": userinfo.get("name", ""),
+            "picture": userinfo.get("picture", ""),
             "bank_details": "",
+            "auth_provider": "google",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
-    session_token = data["session_token"]
+    # Crear sesión y setear cookie
+    session_token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     await db.user_sessions.insert_one({
         "user_id": user_id,
@@ -260,7 +316,9 @@ async def auth_session(request: Request, response: Response):
         "expires_at": expires_at.isoformat(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    response.set_cookie(
+
+    redirect = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+    redirect.set_cookie(
         key="session_token",
         value=session_token,
         max_age=7 * 24 * 60 * 60,
@@ -269,9 +327,10 @@ async def auth_session(request: Request, response: Response):
         samesite="none",
         path="/",
     )
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return user
+    redirect.delete_cookie("oauth_state")
+    return redirect
 
+# ---------- Auth routes (email/password) ----------
 @api_router.get("/auth/me")
 async def auth_me(request: Request):
     user = await require_user(request)
@@ -339,9 +398,6 @@ async def auth_forgot_password(body: ForgotPasswordRequest, request: Request):
         raise HTTPException(status_code=400, detail="Email inválido")
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
-    # Always return success shape to prevent email enumeration.
-    # In dev mode (no email service), return the reset_link so the
-    # frontend can display it to the user.
     if not user or not user.get("password_hash"):
         return {"ok": True, "reset_link": None, "dev_mode": True}
 
@@ -356,12 +412,10 @@ async def auth_forgot_password(body: ForgotPasswordRequest, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
-    # Build link using the frontend origin so it works for both dev & preview
     origin = request.headers.get("origin") or request.headers.get("referer", "").split("/")[0:3]
     if isinstance(origin, list):
         origin = "/".join(origin).rstrip("/")
     reset_link = f"{origin}/reset-password?token={token}"
-
     logging.info(f"[forgot-password] reset link for {email}: {reset_link}")
     return {"ok": True, "reset_link": reset_link, "dev_mode": True}
 
@@ -391,9 +445,7 @@ async def auth_reset_password(body: ResetPasswordRequest, response: Response):
         {"token": body.token},
         {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}},
     )
-    # Invalidate existing sessions for security
     await db.user_sessions.delete_many({"user_id": record["user_id"]})
-    # Create fresh session
     await _create_session(record["user_id"], response)
     user = await db.users.find_one({"user_id": record["user_id"]}, {"_id": 0, "password_hash": 0})
     return user
@@ -422,7 +474,6 @@ async def update_profile(body: ProfileUpdate, request: Request):
 
 # ---------- Carretes ----------
 def _serialize_carrete(c):
-    # Remove _id if present
     c.pop("_id", None)
     return c
 
@@ -554,7 +605,6 @@ async def delete_participant(carrete_id: str, pid: str, request: Request):
         {"id": carrete_id, "user_id": user["user_id"]},
         {"$pull": {"participants": {"id": pid}}},
     )
-    # Remove from consumer_ids in items
     await db.carretes.update_one(
         {"id": carrete_id, "user_id": user["user_id"]},
         {"$pull": {"items.$[].consumer_ids": pid}},
@@ -611,7 +661,6 @@ def compute_summary(carrete: dict):
         consumers = item.get("consumer_ids", [])
 
         if is_bday:
-            # Explicitly a birthday gift item: split among non-birthday
             targets = non_birthday_ids if non_birthday_ids else [p["id"] for p in participants]
             if not targets:
                 continue
@@ -627,12 +676,9 @@ def compute_summary(carrete: dict):
                     })
         else:
             if not consumers:
-                # If nobody assigned, split among all
                 consumers = [p["id"] for p in participants]
-            # Exclude birthday participants from paying (they go free)
             consumers_effective = [c for c in consumers if c not in birthday_ids]
             if not consumers_effective:
-                # Only birthday people consumed → redistribute to all non-birthday
                 consumers_effective = non_birthday_ids or list(consumers)
             if not consumers_effective:
                 continue
@@ -647,7 +693,6 @@ def compute_summary(carrete: dict):
                         "shared_with": len(consumers_effective),
                     })
 
-    # Add tip
     result = []
     grand_total = 0.0
     for p in participants:
@@ -730,7 +775,6 @@ async def public_report_payment(share_id: str, pid: str, body: PaymentReport):
     c = await db.carretes.find_one({"share_id": share_id}, {"_id": 0})
     if not c:
         raise HTTPException(status_code=404, detail="Not found")
-    # Remove any existing payment for this participant
     await db.carretes.update_one(
         {"share_id": share_id},
         {"$pull": {"payments": {"participant_id": pid}}},
@@ -759,7 +803,7 @@ async def validate_payment(carrete_id: str, payment_id: str, status: str = Query
     c = await db.carretes.find_one({"id": carrete_id, "user_id": user["user_id"]}, {"_id": 0})
     return c
 
-# ---------- File Upload / Download (public for sharing) ----------
+# ---------- File Upload ----------
 @api_router.post("/upload")
 async def upload(file: UploadFile = File(...)):
     if file.content_type and not file.content_type.startswith("image/"):
@@ -788,7 +832,7 @@ async def get_file(file_id: str):
     data, content_type = get_object(record["storage_path"])
     return FastAPIResponse(content=data, media_type=record.get("content_type") or content_type)
 
-# ---------- OCR with Gemini Vision ----------
+# ---------- OCR ----------
 @api_router.post("/ocr/scan")
 async def ocr_scan(request: Request, file: UploadFile = File(...)):
     await require_user(request)
@@ -843,7 +887,6 @@ async def ocr_scan(request: Request, file: UploadFile = File(...)):
         logging.error(f"OCR LLM call failed: {e}")
         raise HTTPException(status_code=502, detail=f"OCR failed: {e}")
 
-    # Extract JSON from response (strip potential markdown)
     text = (response or "").strip()
     text = re.sub(r"^```(?:json)?\s*", "", text)
     text = re.sub(r"\s*```$", "", text)

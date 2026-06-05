@@ -29,9 +29,9 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const handleGoogleLogin = () => {
-    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-    const redirectUrl = window.location.origin + "/dashboard";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    // Redirige al backend que inicia el flujo OAuth con Google
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || "";
+    window.location.href = `${backendUrl}/api/auth/google`;
   };
 
   const handleSubmit = async (e) => {
