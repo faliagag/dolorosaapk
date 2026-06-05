@@ -7,7 +7,7 @@ Aplicacion para dividir cuentas en restoranes y bares, con OCR de boletas via Ge
 | Servicio | URL |
 |---|---|
 | **Frontend** | https://dolorosa.misdeseos.cl |
-| **Backend API** | https://api-dolorosa.misdeseos.cl |
+| **Backend API** | https://api-dolosora.misdeseos.cl |
 
 ## Arquitectura
 
@@ -42,7 +42,7 @@ dolorosaapk/
 | `FRONTEND_URL` | `https://dolorosa.misdeseos.cl` |
 | `GOOGLE_CLIENT_ID` | (opcional) Para login con Google |
 | `GOOGLE_CLIENT_SECRET` | (opcional) Para login con Google |
-| `GOOGLE_REDIRECT_URI` | `https://api-dolorosa.misdeseos.cl/api/auth/google/callback` |
+| `GOOGLE_REDIRECT_URI` | `https://api-dolosora.misdeseos.cl/api/auth/google/callback` |
 
 ### Frontend — app: `dolorosa-frontend`
 - **Subdirectory**: `frontend`
@@ -50,7 +50,7 @@ dolorosaapk/
 
 | Variable | Valor |
 |---|---|
-| `REACT_APP_BACKEND_URL` | `https://api-dolorosa.misdeseos.cl` |
+| `REACT_APP_BACKEND_URL` | `https://api-dolosora.misdeseos.cl` |
 
 ### Deploy via CLI
 

@@ -7,7 +7,7 @@ RUN npm install --legacy-peer-deps && \
 
 COPY . .
 
-ARG REACT_APP_BACKEND_URL=https://api-dolorosa.misdeseos.cl
+ARG REACT_APP_BACKEND_URL=https://api-dolosora.misdeseos.cl
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 ENV GENERATE_SOURCEMAP=false
 ENV NODE_OPTIONS=--max-old-space-size=1536
