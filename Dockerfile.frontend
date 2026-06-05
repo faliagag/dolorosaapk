@@ -5,7 +5,7 @@ RUN npm install --legacy-peer-deps && \
     npm install ajv@^8 --legacy-peer-deps
 COPY frontend/ .
 
-ARG REACT_APP_BACKEND_URL
+ARG REACT_APP_BACKEND_URL=https://api-dolorosa.misdeseos.cl
 ENV REACT_APP_BACKEND_URL=$REACT_APP_BACKEND_URL
 ENV GENERATE_SOURCEMAP=false
 ENV NODE_OPTIONS=--max-old-space-size=1536

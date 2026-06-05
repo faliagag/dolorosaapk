@@ -1,6 +1,13 @@
 # La Dolorosa 🍻
 
-Aplicacion para dividir cuentas en restoranes y bares, con OCR de boletas via GPT-4o.
+Aplicacion para dividir cuentas en restoranes y bares, con OCR de boletas via Gemini 2.5 Flash.
+
+## URLs de Produccion
+
+| Servicio | URL |
+|---|---|
+| **Frontend** | https://dolorosa.misdeseos.cl |
+| **Backend API** | https://api-dolorosa.misdeseos.cl |
 
 ## Arquitectura
 
@@ -22,25 +29,28 @@ dolorosaapk/
 
 ## Despliegue en CapRover
 
-### Opcion A: Deploy de cada app por separado (recomendado)
+### Backend — app: `dolorosa-backend`
+- **Subdirectory**: `backend`
+- **Variables de entorno** (configurar en CapRover → App Configs):
 
-1. **Backend** — En CapRover crea la app `dolorosa-backend`, conecta el repo y configura:
-   - **Subdirectory**: `backend`
-   - **Variables de entorno**:
-     - `MONGO_URL` — URL de conexion a MongoDB
-     - `DB_NAME` — Nombre de la base de datos (ej: `la_dolorosa`)
-     - `EMERGENT_LLM_KEY` — API Key de Emergent para OCR
-     - `CORS_ORIGINS` — URL del frontend (ej: `https://dolorosa.tudominio.com`)
+| Variable | Valor |
+|---|---|
+| `MONGO_URL` | `mongodb://user:pass@host:27017` |
+| `DB_NAME` | `la_dolorosa` |
+| `GEMINI_API_KEY` | Tu API Key de Google AI Studio |
+| `CORS_ORIGINS` | `https://dolorosa.misdeseos.cl` |
+| `FRONTEND_URL` | `https://dolorosa.misdeseos.cl` |
+| `GOOGLE_CLIENT_ID` | (opcional) Para login con Google |
+| `GOOGLE_CLIENT_SECRET` | (opcional) Para login con Google |
+| `GOOGLE_REDIRECT_URI` | `https://api-dolorosa.misdeseos.cl/api/auth/google/callback` |
 
-2. **Frontend** — En CapRover crea la app `dolorosa-frontend`, conecta el repo y configura:
-   - **Subdirectory**: `frontend`
-   - **Build Arguments**:
-     - `REACT_APP_BACKEND_URL` — URL del backend (ej: `https://api.tudominio.com`)
+### Frontend — app: `dolorosa-frontend`
+- **Subdirectory**: `frontend`
+- **Build Arguments** (configurar en CapRover → App Configs → Build Args):
 
-### Opcion B: Deploy del frontend desde la raiz
-
-Usa el `captain-definition` de la raiz del repo que apunta a `Dockerfile.frontend`.
-Configura el Build Argument `REACT_APP_BACKEND_URL` en CapRover.
+| Variable | Valor |
+|---|---|
+| `REACT_APP_BACKEND_URL` | `https://api-dolorosa.misdeseos.cl` |
 
 ### Deploy via CLI
 
@@ -60,31 +70,24 @@ cd ../frontend
 caprover deploy --appName dolorosa-frontend
 ```
 
-## Variables de Entorno requeridas
+## Obtener API Key de Gemini
 
-### Backend
-| Variable | Descripcion | Ejemplo |
-|---|---|---|
-| `MONGO_URL` | URI de MongoDB | `mongodb://user:pass@host:27017` |
-| `DB_NAME` | Nombre de la DB | `la_dolorosa` |
-| `EMERGENT_LLM_KEY` | API Key Emergent | `sk-...` |
-| `CORS_ORIGINS` | URLs permitidas (separadas por coma) | `https://dolorosa.tudominio.com` |
-
-### Frontend (Build Arguments)
-| Variable | Descripcion | Ejemplo |
-|---|---|---|
-| `REACT_APP_BACKEND_URL` | URL base del backend | `https://api.tudominio.com` |
+1. Ve a https://aistudio.google.com/apikey
+2. Crea una nueva API Key (gratis)
+3. Copia la key y pegala en CapRover como `GEMINI_API_KEY`
 
 ## Desarrollo local
 
 ```bash
 # Backend
 cd backend
+cp .env.example .env   # editar con tus valores
 pip install -r requirements.txt
 uvicorn server:app --reload --port 8000
 
 # Frontend
 cd frontend
+echo 'REACT_APP_BACKEND_URL=http://localhost:8000' > .env
 npm install --legacy-peer-deps
 npm start
 ```
