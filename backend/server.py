@@ -21,6 +21,10 @@ from requests_oauthlib import OAuth2Session
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+# --- Logging primero para capturar errores de arranque ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
@@ -257,7 +261,6 @@ async def auth_google_callback(request: Request, response: Response):
     if not code:
         return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_code")
 
-    # Intercambiar code por access_token
     try:
         import os as _os
         _os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "0"
@@ -271,7 +274,6 @@ async def auth_google_callback(request: Request, response: Response):
         logging.error(f"Google token exchange failed: {e}")
         return RedirectResponse(url=f"{FRONTEND_URL}/login?error=token_failed")
 
-    # Obtener info del usuario
     try:
         userinfo_resp = oauth.get(GOOGLE_USERINFO_URL)
         userinfo_resp.raise_for_status()
@@ -284,7 +286,6 @@ async def auth_google_callback(request: Request, response: Response):
     if not email:
         return RedirectResponse(url=f"{FRONTEND_URL}/login?error=no_email")
 
-    # Crear o actualizar usuario en DB
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
         user_id = existing["user_id"]
@@ -307,7 +308,6 @@ async def auth_google_callback(request: Request, response: Response):
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
-    # Crear sesión y setear cookie
     session_token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     await db.user_sessions.insert_one({
@@ -343,9 +343,9 @@ async def auth_register(body: RegisterRequest, response: Response):
     password = body.password
 
     if not EMAIL_RE.match(email):
-        raise HTTPException(status_code=400, detail="Email inválido")
+        raise HTTPException(status_code=400, detail="Email inv\u00e1lido")
     if len(password) < 6:
-        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+        raise HTTPException(status_code=400, detail="La contrase\u00f1a debe tener al menos 6 caracteres")
     if not name or len(name) < 2:
         raise HTTPException(status_code=400, detail="Nombre demasiado corto")
 
@@ -372,13 +372,13 @@ async def auth_register(body: RegisterRequest, response: Response):
 async def auth_login(body: LoginRequest, response: Response):
     email = body.email.strip().lower()
     if not EMAIL_RE.match(email):
-        raise HTTPException(status_code=400, detail="Email inválido")
+        raise HTTPException(status_code=400, detail="Email inv\u00e1lido")
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user or not user.get("password_hash"):
-        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+        raise HTTPException(status_code=401, detail="Email o contrase\u00f1a incorrectos")
     if not verify_password(body.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+        raise HTTPException(status_code=401, detail="Email o contrase\u00f1a incorrectos")
 
     await _create_session(user["user_id"], response)
     user.pop("password_hash", None)
@@ -395,7 +395,7 @@ class ResetPasswordRequest(BaseModel):
 async def auth_forgot_password(body: ForgotPasswordRequest, request: Request):
     email = body.email.strip().lower()
     if not EMAIL_RE.match(email):
-        raise HTTPException(status_code=400, detail="Email inválido")
+        raise HTTPException(status_code=400, detail="Email inv\u00e1lido")
 
     user = await db.users.find_one({"email": email}, {"_id": 0})
     if not user or not user.get("password_hash"):
@@ -412,21 +412,19 @@ async def auth_forgot_password(body: ForgotPasswordRequest, request: Request):
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
-    origin = request.headers.get("origin") or request.headers.get("referer", "").split("/")[0:3]
-    if isinstance(origin, list):
-        origin = "/".join(origin).rstrip("/")
-    reset_link = f"{origin}/reset-password?token={token}"
+    # FIX: usar FRONTEND_URL directamente en vez de parsear el header origin
+    reset_link = f"{FRONTEND_URL}/reset-password?token={token}"
     logging.info(f"[forgot-password] reset link for {email}: {reset_link}")
     return {"ok": True, "reset_link": reset_link, "dev_mode": True}
 
 @api_router.post("/auth/reset-password")
 async def auth_reset_password(body: ResetPasswordRequest, response: Response):
     if len(body.password) < 6:
-        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+        raise HTTPException(status_code=400, detail="La contrase\u00f1a debe tener al menos 6 caracteres")
 
     record = await db.password_reset_tokens.find_one({"token": body.token}, {"_id": 0})
     if not record or record.get("used"):
-        raise HTTPException(status_code=400, detail="Link inválido o ya usado")
+        raise HTTPException(status_code=400, detail="Link inv\u00e1lido o ya usado")
 
     expires_at = record.get("expires_at")
     if isinstance(expires_at, str):
@@ -470,7 +468,7 @@ async def update_profile(body: ProfileUpdate, request: Request):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if updates:
         await db.users.update_one({"user_id": user["user_id"]}, {"$set": updates})
-    return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    return await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "password_hash": 0})
 
 # ---------- Carretes ----------
 def _serialize_carrete(c):
@@ -541,7 +539,7 @@ async def get_notifications(request: Request):
                     "carrete_name": c["name"],
                     "payment_id": pay["id"],
                     "participant_id": pay["participant_id"],
-                    "participant_name": person.get("name", "—"),
+                    "participant_name": person.get("name", "\u2014"),
                     "amount": pay.get("amount", 0),
                     "reported_at": pay.get("reported_at"),
                     "note": pay.get("note", ""),
@@ -670,7 +668,7 @@ def compute_summary(carrete: dict):
                     totals[pid]["subtotal"] += share
                     totals[pid]["items"].append({
                         "item_id": item["id"],
-                        "name": item["name"] + " 🎂",
+                        "name": item["name"] + " \ud83c\udf82",
                         "amount": round(share, 2),
                         "shared_with": len(targets),
                     })
@@ -854,19 +852,19 @@ async def ocr_scan(request: Request, file: UploadFile = File(...)):
 
     system = (
         "Eres un experto extrayendo datos de boletas y recibos de restaurantes, bares y comercios. "
-        "Extraes SOLO los ítems consumidos (no subtotales, propinas, impuestos, ni totales). "
-        "Respondes EXCLUSIVAMENTE JSON válido sin texto adicional, sin comillas markdown."
+        "Extraes SOLO los \u00edtems consumidos (no subtotales, propinas, impuestos, ni totales). "
+        "Respondes EXCLUSIVAMENTE JSON v\u00e1lido sin texto adicional, sin comillas markdown."
     )
     prompt = (
-        "Extrae los ítems de esta boleta. Devuelve un JSON con la forma exacta:\n"
-        '{"items": [{"name": "nombre del ítem", "price": 0, "quantity": 1}]}\n\n'
+        "Extrae los \u00edtems de esta boleta. Devuelve un JSON con la forma exacta:\n"
+        '{"items": [{"name": "nombre del \u00edtem", "price": 0, "quantity": 1}]}\n\n'
         "Reglas:\n"
-        "- price debe ser el precio TOTAL de la línea (cantidad × unidad) como número entero en la moneda local "
-        "(remueve puntos y comas de miles, p.ej. '21.000' → 21000, '9.500' → 9500).\n"
-        "- quantity es la cantidad que aparece al inicio de la línea (o 1 si no hay).\n"
+        "- price debe ser el precio TOTAL de la l\u00ednea (cantidad \u00d7 unidad) como n\u00famero entero en la moneda local "
+        "(remueve puntos y comas de miles, p.ej. '21.000' \u2192 21000, '9.500' \u2192 9500).\n"
+        "- quantity es la cantidad que aparece al inicio de la l\u00ednea (o 1 si no hay).\n"
         "- IGNORA: subtotal, total, propina, tip, IVA, neto, impuestos, cambio, vuelto, servicio, mesa, ID, fecha, "
-        "garzón, RUT, folio, dirección, teléfono, logos, 'pre-cuenta', encabezados.\n"
-        '- Si no hay ítems claros, devuelve {"items": []}.\n'
+        "garz\u00f3n, RUT, folio, direcci\u00f3n, tel\u00e9fono, logos, 'pre-cuenta', encabezados.\n"
+        '- Si no hay \u00edtems claros, devuelve {"items": []}.\n'
         "- No agregues explicaciones. SOLO el JSON."
     )
 
@@ -919,16 +917,20 @@ async def ocr_scan(request: Request, file: UploadFile = File(...)):
         clean.append({"name": name[:60], "price": round(price), "quantity": max(1, qty)})
     return {"items": clean}
 
-# ---------- Startup ----------
+# ---------- Startup / Shutdown ----------
 @app.on_event("startup")
 async def startup():
+    # Storage es opcional (solo para screenshots de pagos)
     try:
         init_storage()
         logging.info("Storage initialized")
     except Exception as e:
-        logging.error(f"Storage init failed: {e}")
+        logging.warning(f"Storage init failed (no cr\u00edtico): {e}")
+    # Indexes MongoDB
     try:
         await db.users.create_index("email", unique=True)
+        await db.user_sessions.create_index("session_token", unique=True)
+        await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
         await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=3600)
         await db.password_reset_tokens.create_index("token", unique=True)
         logging.info("Indexes ensured")
@@ -939,19 +941,13 @@ async def startup():
 async def shutdown():
     client.close()
 
-app.include_router(api_router)
-
+# FIX: CORS middleware debe registrarse ANTES de include_router
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get('CORS_ORIGINS', 'https://dolorosa.misdeseos.cl').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-@api_router.get("/health")
-async def health_check():
-    return {"status": "ok"}
+app.include_router(api_router)
